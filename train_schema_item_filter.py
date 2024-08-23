@@ -1,5 +1,6 @@
 import os
 import torch
+torch.manual_seed(0)
 import transformers
 import argparse
 import torch.optim as optim
@@ -11,12 +12,13 @@ from transformers.trainer_utils import set_seed
 from sklearn.metrics import roc_auc_score
 from torch.utils.tensorboard import SummaryWriter
 from utils.classifier_model import SchemaItemClassifier
+# from utils.classifier_model_origin import SchemaItemClassifier
 from utils.classifier_loss import ClassifierLoss
 from utils.load_classifier_dataset import SchemaItemClassifierDataset
 
 def parse_option():
     parser = argparse.ArgumentParser("command line arguments for fine-tuning schema item classifier.")
-    
+
     parser.add_argument('--batch_size', type = int, default = 8,
                         help = 'input batch size.')
     parser.add_argument('--gradient_descent_step', type = int, default = 4,
@@ -51,7 +53,7 @@ def parse_option():
     opt = parser.parse_args()
 
     return opt
-    
+
 def prepare_batch_inputs_and_labels(batch, tokenizer):
     batch_size = len(batch)
 
@@ -60,7 +62,7 @@ def prepare_batch_inputs_and_labels(batch, tokenizer):
     batch_table_labels = [data["table_labels_in_one_db"] for data in batch]
     batch_column_infos = [data["column_infos_in_one_db"] for data in batch]
     batch_column_labels = [data["column_labels_in_one_db"] for data in batch]
-    
+
     batch_input_tokens, batch_column_info_ids, batch_table_name_ids, batch_column_number_in_each_table = [], [], [], []
     for batch_id in range(batch_size):
         input_tokens = [batch_texts[batch_id]]
@@ -70,29 +72,29 @@ def prepare_batch_inputs_and_labels(batch, tokenizer):
         batch_column_number_in_each_table.append([len(column_infos_in_one_table) for column_infos_in_one_table in column_infos_in_one_db])
 
         column_info_ids, table_name_ids = [], []
-        
+
         for table_id, table_name in enumerate(table_names_in_one_db):
             input_tokens.append("|")
             input_tokens.append(table_name)
             table_name_ids.append(len(input_tokens) - 1)
             input_tokens.append(":")
-            
+
             for column_info in column_infos_in_one_db[table_id]:
                 input_tokens.append(column_info)
                 column_info_ids.append(len(input_tokens) - 1)
                 input_tokens.append(",")
-            
+
             input_tokens = input_tokens[:-1]
-        
+
         batch_input_tokens.append(input_tokens)
         batch_column_info_ids.append(column_info_ids)
         batch_table_name_ids.append(table_name_ids)
 
     # notice: `truncation = True` may discard some tables and columns that exceed the max length
     tokenized_inputs = tokenizer(
-        batch_input_tokens, 
-        return_tensors="pt", 
-        is_split_into_words = True, 
+        batch_input_tokens,
+        return_tensors="pt",
+        is_split_into_words = True,
         padding = "max_length",
         max_length = 512,
         truncation = True
@@ -100,7 +102,7 @@ def prepare_batch_inputs_and_labels(batch, tokenizer):
 
     batch_aligned_column_info_ids, batch_aligned_table_name_ids = [], []
     batch_aligned_table_labels, batch_aligned_column_labels = [], []
-    
+
     # align batch_column_info_ids, and batch_table_name_ids after tokenizing
     for batch_id in range(batch_size):
         word_ids = tokenized_inputs.word_ids(batch_index = batch_id)
@@ -139,7 +141,7 @@ def prepare_batch_inputs_and_labels(batch, tokenizer):
     for batch_id in range(batch_size):
         if len(batch_column_number_in_each_table[batch_id]) > len(batch_aligned_table_labels[batch_id]):
             batch_column_number_in_each_table[batch_id] = batch_column_number_in_each_table[batch_id][ : len(batch_aligned_table_labels[batch_id])]
-        
+
         if sum(batch_column_number_in_each_table[batch_id]) > len(batch_aligned_column_labels[batch_id]):
             truncated_column_number = sum(batch_column_number_in_each_table[batch_id]) - len(batch_aligned_column_labels[batch_id])
             batch_column_number_in_each_table[batch_id][-1] -= truncated_column_number
@@ -176,9 +178,17 @@ def _train(opt):
 
     train_dataset = SchemaItemClassifierDataset(opt.train_filepath)
 
+    # original_size = len(train_dataset)
+    # subset_size = int(0.3 * original_size)
+
+    # # Randomly split the dataset into the 10% subset and the remaining 90%
+    # train_dataset, _ = torch.utils.data.random_split(train_dataset, [subset_size, original_size - subset_size])
+
+    # print("Splitted to get only 30% of dataset")
+
     train_dataloder = DataLoader(
-        train_dataset, 
-        batch_size = opt.batch_size, 
+        train_dataset,
+        batch_size = opt.batch_size,
         shuffle = True,
         collate_fn = lambda x: x
     )
@@ -209,19 +219,19 @@ def _train(opt):
     num_checkpoint_steps = int(1.2*len(train_dataset)/opt.batch_size)
 
     optimizer = optim.AdamW(
-        params = model.parameters(), 
+        params = model.parameters(),
         lr = opt.learning_rate
     )
 
     scheduler = transformers.get_cosine_schedule_with_warmup(
-        optimizer, 
+        optimizer,
         num_warmup_steps = num_warmup_steps,
         num_training_steps = num_training_steps
     )
 
     best_score, early_stop_step, train_step = 0, 0, 0
     encoder_loss_func = ClassifierLoss(alpha = opt.alpha, gamma = opt.gamma)
-    
+
     for epoch in range(opt.epochs):
         print(f"This is epoch {epoch+1}.")
         for batch in train_dataloder:
@@ -232,10 +242,10 @@ def _train(opt):
                 batch_column_labels, batch_table_labels, \
                 batch_aligned_column_info_ids, batch_aligned_table_name_ids, \
                 batch_column_number_in_each_table = prepare_batch_inputs_and_labels(batch, tokenizer)
-            
+
             if epoch == 0:
                 print("\n".join(tokenizer.batch_decode(encoder_input_ids, skip_special_tokens = True)))
-            
+
             model_outputs = model(
                 encoder_input_ids,
                 encoder_input_attention_mask,
@@ -243,31 +253,31 @@ def _train(opt):
                 batch_aligned_table_name_ids,
                 batch_column_number_in_each_table
             )
-            
+
             loss = encoder_loss_func.compute_loss(
                 model_outputs["batch_table_name_cls_logits"],
                 batch_table_labels,
                 model_outputs["batch_column_info_cls_logits"],
                 batch_column_labels
             )
-            
+
             loss.backward()
-            
+
             # update lr
             if scheduler is not None:
                 scheduler.step()
-            
+
             if writer is not None:
                 # record training loss (tensorboard)
                 writer.add_scalar('train loss', loss.item(), train_step)
                 # record learning rate (tensorboard)
                 writer.add_scalar('train lr', optimizer.state_dict()['param_groups'][0]['lr'], train_step)
-            
+
             if train_step % opt.gradient_descent_step == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 optimizer.zero_grad()
-            
+
             if train_step % num_checkpoint_steps == 0:
                 print(f"At {train_step} training step, start an evaluation.")
                 model.eval()
@@ -284,7 +294,7 @@ def _train(opt):
                     with torch.no_grad():
                         model_outputs = model(
                             encoder_input_ids,
-                            encoder_input_attention_mask, 
+                            encoder_input_attention_mask,
                             batch_aligned_column_info_ids,
                             batch_aligned_table_name_ids,
                             batch_column_number_in_each_table
@@ -292,13 +302,13 @@ def _train(opt):
 
                     for batch_id, table_logits in enumerate(model_outputs["batch_table_name_cls_logits"]):
                         table_pred_probs = torch.nn.functional.softmax(table_logits, dim = 1)
-                        
+
                         table_pred_probs_for_auc.extend(table_pred_probs[:, 1].cpu().tolist())
                         table_labels_for_auc.extend(batch_table_labels[batch_id].cpu().tolist())
 
                     for batch_id, column_logits in enumerate(model_outputs["batch_column_info_cls_logits"]):
                         column_pred_probs = torch.nn.functional.softmax(column_logits, dim = 1)
-            
+
                         column_pred_probs_for_auc.extend(column_pred_probs[:, 1].cpu().tolist())
                         column_labels_for_auc.extend(batch_column_labels[batch_id].cpu().tolist())
 
@@ -312,7 +322,7 @@ def _train(opt):
                 if writer is not None:
                     writer.add_scalar('table AUC', table_auc, train_step/num_checkpoint_steps)
                     writer.add_scalar('column AUC', column_auc, train_step/num_checkpoint_steps)
-                
+
                 toral_auc_score = table_auc + column_auc
                 print("total auc:", toral_auc_score)
                 # save the best ckpt
@@ -325,16 +335,16 @@ def _train(opt):
                     early_stop_step = 0
                 else:
                     early_stop_step += 1
-                
+
                 print("early_stop_step:", early_stop_step)
 
             if early_stop_step >= patience:
                 break
-        
+
         if early_stop_step >= patience:
             print("Classifier training process triggers early stopping.")
             break
-    
+
     print("best auc score:", best_score)
 
 def _test(opt):
@@ -343,7 +353,7 @@ def _test(opt):
 
     # load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(opt.save_path, add_prefix_space = True)
-    
+
     dataset = SchemaItemClassifierDataset(opt.dev_filepath)
 
     dataloder = DataLoader(
@@ -384,11 +394,11 @@ def _test(opt):
                 batch_aligned_table_name_ids,
                 batch_column_number_in_each_table
             )
-        
+
         for batch_id, table_logits in enumerate(model_outputs["batch_table_name_cls_logits"]):
             table_pred_probs = torch.nn.functional.softmax(table_logits, dim = 1)
             returned_table_pred_probs.append(table_pred_probs[:, 1].cpu().tolist())
-            
+
             table_pred_probs_for_auc.extend(table_pred_probs[:, 1].cpu().tolist())
             table_labels_for_auc.extend(batch_table_labels[batch_id].cpu().tolist())
 
@@ -397,7 +407,7 @@ def _test(opt):
             column_pred_probs = torch.nn.functional.softmax(column_logits, dim = 1)
             returned_column_pred_probs.append([column_pred_probs[:, 1].cpu().tolist()[sum(column_number_in_each_table[:table_id]):sum(column_number_in_each_table[:table_id+1])] \
                 for table_id in range(len(column_number_in_each_table))])
-            
+
             column_pred_probs_for_auc.extend(column_pred_probs[:, 1].cpu().tolist())
             column_labels_for_auc.extend(batch_column_labels[batch_id].cpu().tolist())
 
@@ -409,7 +419,7 @@ def _test(opt):
         print("table auc:", table_auc)
         print("column auc:", column_auc)
         print("total auc:", table_auc+column_auc)
-    
+
     return returned_table_pred_probs, returned_column_pred_probs
 
 if __name__ == "__main__":

@@ -1,12 +1,12 @@
 # CodeS: Towards Building Open-source Language Models for Text-to-SQL
 
-We release **CodeS**, a series of **Code** LLMs specifically trained for **S**QL generation. CodeS is **incrementally pre-trained** based on StarCoder using a large SQL-related corpus. The CodeS series encompasses four scales: [CodeS-1B](https://huggingface.co/seeklhy/codes-1b), [CodeS-3B](https://huggingface.co/seeklhy/codes-3b), [CodeS-7B](https://huggingface.co/seeklhy/codes-7b), and [CodeS-15B](https://huggingface.co/seeklhy/codes-15b). Our carefully collected pre-training corpus is also available at [here](https://drive.google.com/file/d/1UVkwQU9pYWU_-hhQIpgH8xWpLAqm1StX/view?usp=sharing). 
+We release **CodeS**, a series of **Code** LLMs specifically trained for **S**QL generation. CodeS is **incrementally pre-trained** based on StarCoder using a large SQL-related corpus. The CodeS series encompasses four scales: [CodeS-1B](https://huggingface.co/seeklhy/codes-1b), [CodeS-3B](https://huggingface.co/seeklhy/codes-3b), [CodeS-7B](https://huggingface.co/seeklhy/codes-7b), and [CodeS-15B](https://huggingface.co/seeklhy/codes-15b). Our carefully collected pre-training corpus is also available at [here](https://drive.google.com/file/d/1UVkwQU9pYWU_-hhQIpgH8xWpLAqm1StX/view?usp=sharing).
 
 CodeS series have demonstrated outstanding performance on many challenging text-to-SQL benchmarks, including **Spider and BIRD**. Furthermore, we conduct a comprehensive evaluation of CodeS's robustness across various benchmarks, encompassing **Spider-DK, Spider-Syn, Spider-Realistic, and Dr.Spider**. For in-depth insights into these results, please refer to the experimental section of our paper.
 
 Utilizing CodeS, we have launched a text-to-SQL demo. You can access it at [RUCKBReasoning/text2sql-demo](https://github.com/RUCKBReasoning/text2sql-demo). Feel free to explore and follow the provided instructions to customize your own text-to-SQL demo!
 
-`Update (2024.4.19):` We are excited to announce the release of our newly developed schema filter, boasting 3 billion parameters and offering bilingual support for both Chinese and English. This tool is now available as an independent component and can be accessed at [text2sql-schema-filter](https://github.com/RUCKBReasoning/text2sql-schema-filter). If you're looking to enhance your text-to-SQL system with a schema filter, we encourage you to give it a try. 
+`Update (2024.4.19):` We are excited to announce the release of our newly developed schema filter, boasting 3 billion parameters and offering bilingual support for both Chinese and English. This tool is now available as an independent component and can be accessed at [text2sql-schema-filter](https://github.com/RUCKBReasoning/text2sql-schema-filter). If you're looking to enhance your text-to-SQL system with a schema filter, we encourage you to give it a try.
 
 `Update (2024.5.31):` We have released scripts for the domain adaptation technique in the `DomainAdaptation` folder. Special thanks to Hanbing!
 
@@ -32,7 +32,7 @@ Create a new Anaconda environment and install the required modules:
 ```
 conda create -n codes python=3.8.5
 conda activate codes
-conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
 pip install -r requirements.txt
 git clone https://github.com/lihaoyang-ruc/SimCSE.git
 cd SimCSE
@@ -95,7 +95,7 @@ What should be your DeepSpeed's ZeRO optimization stage?
 2
 
 Where to offload optimizer states?
-none                                                         
+none
 
 Where to offload parameters?
 none
@@ -111,7 +111,7 @@ Do you want to enable `deepspeed.zero.Init` when using ZeRO Stage-3 for construc
 How many GPU(s) should be used for distributed training? [1]:8
 
 Do you wish to use FP16 or BF16 (mixed precision)?
-bf16                                             
+bf16
 ```
 
 We’re equipped with 8 GPUs for our training processes, each capable of handling a batch size of 4. Additionally, we’ve configured the gradient accumulation steps to 4, culminating in a global batch size of $8 \times 4 \times 4=128$.
